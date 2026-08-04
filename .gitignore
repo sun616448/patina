@@ -1,0 +1,6 @@
+# Source archive: the GLBs as downloaded, before renaming/conversion/resizing.
+# Nothing at runtime references these (grep index.html js/ for "textures/") and
+# they are ~346 MB — roughly half the folder. They must not reach a host.
+textures/
+
+.DS_Store

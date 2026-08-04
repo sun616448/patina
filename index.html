@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Patina · every surface remembers</title>
+<meta name="description" content="An interactive walk through history by material: terracotta, bronze and marble, one surface at a time.">
+<meta name="theme-color" content="#0D0B09">
+<meta property="og:title" content="Patina">
+<meta property="og:description" content="An interactive walk through history by material: terracotta, bronze and marble, one surface at a time.">
+<meta property="og:type" content="website">
+<!-- inline favicon: a warm dot on the void, so the tab matches the piece and
+     the demo never records a 404 for /favicon.ico -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230D0B09'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23c28a6a'/%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #0D0B09;
+    --ink: #d9cfc1;
+    --ink-dim: #8d7c68;
+    /* procedural clay grain — grayscale fractal noise, reused across swatches */
+    --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  canvas#scene {
+    position: fixed;
+    inset: 0;
+    display: block;
+  }
+
+  /* ---- overlay text, no pointer events: the whole screen is the button ---- */
+
+  /* Flows inside #title-overlay's centred column, under the tagline, rather
+     than being pinned to the bottom of the viewport — the instruction belongs
+     with the title where the eye already is. */
+  #prompt {
+    margin-top: 2.9rem;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 19px;
+    letter-spacing: 0.14em;
+    color: var(--ink-dim);
+    opacity: 0;
+    pointer-events: none;
+    text-align: center;
+  }
+
+  /* "touch it" is the invitation, and it is the part that breathes: ui.js
+     yoyos THIS between 0.85 and 0.4, not #prompt, so the instruction below
+     keeps a steady brightness. Pulsing the container instead dragged the hint
+     down to ~0.25 at the dim end of every cycle, which is what made it read as
+     barely there. */
+  #prompt .prompt-lead {
+    display: block;
+  }
+
+  /* the instruction. Still typographically subordinate to "touch it" — small
+     caps, wide tracking — but at full ink and steady, because it is the only
+     thing on the opening screen telling anyone what to do. */
+  #prompt .prompt-hint {
+    display: block;
+    margin-top: 1.05em;
+    font-style: normal;
+    font-size: 13px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--ink);
+    /* the texture behind this runs from near-black to pale clay depending on
+       where the closeup drift has wandered, so the hint carries its own shadow
+       rather than relying on the surface staying dark under it */
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.75);
+  }
+
+  /* left side panel: a museum placard, scrim-backed so text stays legible
+     no matter what the 3D scene does behind it */
+  #card {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: clamp(320px, 37vw, 560px);
+    display: flex;
+    flex-direction: column;
+    /* safe center so a long passage on a short window aligns to the top and
+       clips at the bottom instead of losing its first lines off the screen */
+    justify-content: safe center;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 6vh 3vw 6vh 3.4vw;
+    background: rgba(13, 11, 9, 0.75);
+    backdrop-filter: blur(14px) saturate(0.92);
+    -webkit-backdrop-filter: blur(14px) saturate(0.92);
+    /* soften the right edge so the scrim dissolves into the scene */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+    text-align: left;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #card .label {
+    font-family: 'Playfair Display', serif;
+    font-size: 13px;
+    letter-spacing: 0.32em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    margin-bottom: 1.1em;
+  }
+
+  #card::-webkit-scrollbar { display: none; }
+
+  /* one dash per beat of this node's commentary: how much is left to read
+     before the surface itself changes. Same vocabulary as the timeline ticks,
+     one scale down — that marks eras, this marks passages. */
+  #card .beats {
+    display: flex;
+    gap: 7px;
+    margin-bottom: 2em;
+  }
+
+  #card .beat-dash {
+    width: 22px;
+    height: 1px;
+    background: rgba(217, 207, 193, 0.2);
+    transition: background 0.6s ease;
+  }
+
+  #card .beat-dash.is-active { background: var(--ink); }
+
+  #card .text {
+    font-family: 'Playfair Display', serif;
+    font-size: 21px;
+    font-weight: 400;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+
+  /* the passages run 430–640 characters; on a short window that is taller than
+     the placard, so the type steps down rather than spilling past the frame */
+  @media (max-height: 860px) {
+    #card .text { font-size: 19px; line-height: 1.62; }
+  }
+  @media (max-height: 720px) {
+    #card .text { font-size: 17px; line-height: 1.55; }
+    #card .label { font-size: 12px; margin-bottom: 0.9em; }
+    #card { padding: 4vh 3vw 4vh 3.4vw; }
+  }
+
+  #cue {
+    position: fixed;
+    left: 50%;
+    bottom: 12vh;
+    transform: translateX(-50%);
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 16px;
+    letter-spacing: 0.18em;
+    color: var(--ink-dim);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* a mark that falls: the cue has to read as "scroll", not "click" */
+  #cue::after {
+    content: '';
+    display: block;
+    width: 1px;
+    height: 16px;
+    margin: 9px auto 0;
+    background: linear-gradient(to bottom, var(--ink-dim), transparent);
+    animation: cue-fall 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes cue-fall {
+    0%   { transform: translateY(-4px); opacity: 0; }
+    35%  { opacity: 1; }
+    100% { transform: translateY(8px); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #cue::after { animation: none; }
+  }
+
+  /* ---- back control: understated, top-left, over the placard scrim ---- */
+  #nav-back {
+    position: fixed;
+    top: 26px;
+    left: 26px;
+    z-index: 12;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    background: none;
+    border: none;
+    padding: 6px 4px;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 16px;
+    letter-spacing: 0.18em;
+    color: var(--ink-dim);
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: color 0.5s ease;
+  }
+  #nav-back .nav-arrow { font-style: normal; font-size: 19px; line-height: 1; }
+  #nav-back:hover, #nav-back:focus-visible { color: var(--ink); outline: none; }
+
+  /* ---- home control: the way back to the material picker, top-right,
+         offered on every screen past the picker itself ---- */
+  #nav-home {
+    position: fixed;
+    top: 26px;
+    right: 26px;
+    z-index: 12;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    background: none;
+    border: none;
+    padding: 6px 4px;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 16px;
+    letter-spacing: 0.18em;
+    color: var(--ink-dim);
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: color 0.5s ease;
+  }
+  #nav-home:hover, #nav-home:focus-visible { color: var(--ink); outline: none; }
+
+  /* ---- end: replay / choose another, centered low like the cue ---- */
+  #end {
+    position: fixed;
+    left: 50%;
+    bottom: 15vh;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.6rem;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #end .end-title {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 18px;
+    letter-spacing: 0.16em;
+    color: var(--ink-dim);
+  }
+  #end .end-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.6rem;
+  }
+  #end .end-actions button {
+    position: relative;
+    background: none;
+    border: none;
+    padding: 6px 2px;
+    font-family: 'Playfair Display', serif;
+    font-size: 16px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink);
+    cursor: pointer;
+    transition: color 0.5s ease;
+  }
+  #end .end-actions button::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -2px;
+    height: 1px;
+    background: var(--ink);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  #end .end-actions button:hover::after,
+  #end .end-actions button:focus-visible::after { transform: scaleX(1); }
+  #end .end-actions button:focus-visible { outline: none; }
+  #end .end-actions .end-sep {
+    width: 1px;
+    height: 16px;
+    background: rgba(217, 207, 193, 0.2);
+  }
+
+  @media (max-width: 760px) {
+    #nav-back { top: 18px; left: 18px; }
+    #nav-home { top: 18px; right: 18px; font-size: 13px; letter-spacing: 0.1em; }
+    #end { bottom: calc(88px + 1.5vh); }
+    #end .end-actions { flex-direction: column; gap: 1rem; }
+    #end .end-actions .end-sep { display: none; }
+  }
+
+  /* ============================================================
+     Title — fades in OVER the opening closeup texture, never a
+     separate screen. Pointer events pass through: the texture
+     itself is the button.
+     ============================================================ */
+
+  #title-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 10vh;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  #title-overlay h1 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 400;
+    font-size: clamp(72px, 12.5vw, 176px);
+    line-height: 1;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    text-shadow: 0 2px 40px rgba(0, 0, 0, 0.85), 0 1px 8px rgba(0, 0, 0, 0.6);
+    opacity: 0;
+  }
+
+  #title-overlay .tagline {
+    margin-top: 1.3rem;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: clamp(18px, 2.6vw, 24px);
+    letter-spacing: 0.12em;
+    color: var(--ink);
+    text-shadow: 0 1px 20px rgba(0, 0, 0, 0.85);
+    opacity: 0;
+  }
+
+  /* ============================================================
+     Landing — texture selection only, reached from the end screen.
+     A scrim over the live scene, not a wall.
+     ============================================================ */
+
+  #landing {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(13, 11, 9, 0.82);
+    backdrop-filter: blur(18px) saturate(0.9);
+    -webkit-backdrop-filter: blur(18px) saturate(0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* --- texture selection screen --- */
+  #landing-select {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 6vw;
+  }
+
+  #landing-select .select-intro {
+    font-family: 'Playfair Display', serif;
+    font-size: 14px;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 3rem;
+  }
+
+  .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(20px, 3vw, 40px);
+  }
+
+  /* each swatch reads as a physical material sample, not a UI tile */
+  .swatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.1rem;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    cursor: default;
+  }
+
+  .swatch-face {
+    width: clamp(116px, 17vw, 176px);
+    height: clamp(116px, 17vw, 176px);
+    border-radius: 2px;
+    box-shadow:
+      0 18px 40px -20px rgba(0, 0, 0, 0.9),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.6s ease, filter 0.6s ease;
+  }
+
+  .swatch-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+  }
+
+  .swatch-meta {
+    font-family: 'Playfair Display', serif;
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-top: -0.5rem;
+  }
+
+  /* the live material: warm, fully textured, clickable */
+  .swatch.is-active { cursor: pointer; }
+
+  /* Each swatch is a crop of the thread's own scan — the flowerpot's fired
+     surface, the Ugarit ingot's corrosion, Fata Morgana's marble — not a
+     stand-in color. The gradient on top is only the museum key light: warm
+     highlight from the upper-left, falloff into the dark at the far corner. */
+  .swatch-face {
+    background-size: cover;
+    background-position: center;
+  }
+
+  .swatch-face.terracotta {
+    background-color: #9e4f30;
+    background-image:
+      radial-gradient(120% 120% at 32% 26%,
+        rgba(255, 226, 196, 0.20) 0%, rgba(0, 0, 0, 0) 46%, rgba(0, 0, 0, 0.52) 100%),
+      url('assets/swatches/terracotta.jpg');
+  }
+
+  .swatch.is-active:hover .swatch-face,
+  .swatch.is-active:focus-visible .swatch-face {
+    transform: translateY(-6px) scale(1.03);
+    box-shadow:
+      0 28px 56px -22px rgba(0, 0, 0, 0.95),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  .swatch.is-active .swatch-meta { color: #a7795a; }
+
+  .swatch-face.marble {
+    background-color: #b9b4a8;
+    background-image:
+      radial-gradient(120% 120% at 30% 24%,
+        rgba(255, 246, 232, 0.16) 0%, rgba(0, 0, 0, 0) 44%, rgba(0, 0, 0, 0.46) 100%),
+      url('assets/swatches/marble.jpg');
+  }
+
+  .swatch-face.bronze {
+    background-color: #6e5436;
+    background-image:
+      radial-gradient(120% 120% at 34% 28%,
+        rgba(255, 228, 190, 0.22) 0%, rgba(0, 0, 0, 0) 48%, rgba(0, 0, 0, 0.55) 100%),
+      url('assets/swatches/bronze.jpg');
+  }
+
+  /* CC BY asks for attribution wherever the work is shown; the picker is the
+     one screen with room for it without intruding on a piece */
+  #credits-link {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 26px;
+    text-align: center;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: rgba(141, 124, 104, 0.7);
+    text-decoration: none;
+    transition: color 0.5s ease;
+  }
+  #credits-link:hover, #credits-link:focus-visible { color: var(--ink); outline: none; }
+
+  @media (max-width: 560px) {
+    .swatches { gap: 26px; }
+    .swatch-face { width: 38vw; height: 38vw; }
+    #credits-link { bottom: 14px; font-size: 11px; }
+  }
+
+  /* a piece that will not load shouldn't leave a black screen with no
+     explanation — the commonest cause is opening index.html over file:// */
+  /* the <noscript> panel borrows the fault panel's look; it can't share the
+     rule because #fault is display:none until something actually fails */
+  #fault, .fault-static {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0 8vw;
+    text-align: center;
+    background: rgba(13, 11, 9, 0.94);
+    font-family: 'Playfair Display', serif;
+    color: var(--ink-dim);
+  }
+  .fault-static { display: flex; z-index: 45; }
+  .fault-title { font-size: 22px; letter-spacing: 0.06em; color: var(--ink); }
+  .fault-note { font-size: 15px; font-style: italic; letter-spacing: 0.06em; max-width: 34em; line-height: 1.6; }
+  /* only shown when the page is actually running off file:// — see bootstrap */
+  #fault .fault-dev { display: none; opacity: 0.75; }
+
+  /* ============================================================
+     Timeline — the thread of time, fixed along the bottom
+     ============================================================ */
+
+  #timeline {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 86px;
+    z-index: 8;
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  /* the dates have to stay readable when a pale piece (the frieze block, the
+     flowerpot under retail light) fills the bottom of the frame */
+  #timeline::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 118px;
+    background: linear-gradient(to top,
+      rgba(13, 11, 9, 0.88) 0%, rgba(13, 11, 9, 0.55) 46%, rgba(13, 11, 9, 0) 100%);
+  }
+
+  .tl-line {
+    position: absolute;
+    left: 10%;
+    width: 80%;
+    bottom: 50px;
+    height: 1px;
+    background: rgba(217, 207, 193, 0.14);
+  }
+
+  /* the glow that slides between eras during a transition */
+  #tl-glow {
+    position: absolute;
+    bottom: 50px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #efe0cd;
+    box-shadow: 0 0 12px 3px rgba(233, 201, 160, 0.65);
+    transform: translate(-50%, 50%);
+  }
+
+  .tl-tick {
+    position: absolute;
+    bottom: 50px;
+    transform: translate(-50%, 50%);
+  }
+
+  .tl-dot {
+    display: block;
+    width: 5px;
+    height: 5px;
+    margin: 0 auto;
+    border-radius: 50%;
+    background: rgba(217, 207, 193, 0.3);
+    transition: background 0.6s ease, width 0.6s ease,
+                height 0.6s ease, box-shadow 0.6s ease;
+  }
+
+  .tl-date {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-family: 'Playfair Display', serif;
+    font-size: 16px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    opacity: 0.4;
+    transition: opacity 0.6s ease, color 0.6s ease;
+  }
+
+  .tl-tick.is-active .tl-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--ink);
+    box-shadow: 0 0 9px rgba(233, 201, 160, 0.55);
+  }
+
+  .tl-tick.is-active .tl-date {
+    opacity: 0.95;
+    color: var(--ink);
+  }
+
+  @media (max-width: 560px) {
+    .tl-date { font-size: 13px; letter-spacing: 0.1em; }
+  }
+
+  /* phones: the placard becomes a bottom sheet, full width, same scrim */
+  @media (max-width: 760px) {
+    #card {
+      top: auto;
+      bottom: 0;
+      left: 0;
+      height: auto;
+      width: 100%;
+      max-width: none;
+      justify-content: flex-end;
+      padding: 6vh 7vw calc(88px + 3vh);
+      -webkit-mask-image: linear-gradient(to bottom, transparent, #000 16%);
+              mask-image: linear-gradient(to bottom, transparent, #000 16%);
+    }
+    #card .text { font-size: 17px; line-height: 1.58; }
+    #cue { bottom: calc(88px + 1vh); }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div id="title-overlay">
+  <h1>Patina</h1>
+  <p class="tagline">Every surface remembers.</p>
+  <!-- the prompt lives INSIDE the centred title group so the instruction sits
+       with the title rather than stranded at the foot of the screen. Only the
+       h1 and .tagline are ever faded by ui.js, never #title-overlay itself, so
+       nesting here does not affect how the prompt shows and hides. -->
+  <div id="prompt">
+    <span class="prompt-lead">touch it</span>
+    <span class="prompt-hint">click or scroll</span>
+  </div>
+</div>
+
+<div id="landing" style="display:none">
+  <div id="landing-select">
+    <p class="select-intro">Choose a surface</p>
+    <div class="swatches">
+      <button class="swatch is-active" id="swatch-bronze" type="button" aria-label="Explore Bronze">
+        <span class="swatch-face bronze"></span>
+        <span class="swatch-name">Bronze</span>
+        <span class="swatch-meta">1320 BCE to today</span>
+      </button>
+      <button class="swatch is-active" id="swatch-terracotta" type="button" aria-label="Explore Terracotta">
+        <span class="swatch-face terracotta"></span>
+        <span class="swatch-name">Terracotta</span>
+        <span class="swatch-meta">2500 BCE to today</span>
+      </button>
+      <button class="swatch is-active" id="swatch-marble" type="button" aria-label="Explore Marble">
+        <span class="swatch-face marble"></span>
+        <span class="swatch-name">Marble</span>
+        <span class="swatch-meta">2500 BCE to 1937</span>
+      </button>
+    </div>
+  </div>
+  <!-- credits.html, not CREDITS.md: static hosts serve .md as octet-stream, so
+     the link downloaded a file instead of showing the attribution. Generated
+     from CREDITS.md, which stays the source of record. -->
+<a id="credits-link" href="credits.html" target="_blank" rel="noopener">scans by their museums and makers · credits</a>
+</div>
+
+<div id="card">
+  <div class="label"></div>
+  <div class="beats"></div>
+  <div class="text"></div>
+</div>
+<div id="cue"><span class="cue-label">scroll</span></div>
+
+<button id="nav-back" type="button" aria-label="Go back one step">
+  <span class="nav-arrow">&#8592;</span><span class="nav-label">back</span>
+</button>
+
+<button id="nav-home" type="button" aria-label="Choose another texture">
+  <span class="nav-label">choose another texture</span>
+</button>
+
+<div id="end">
+  <p class="end-title">Every surface remembers.</p>
+  <div class="end-actions">
+    <button id="end-replay" type="button">Replay</button>
+    <span class="end-sep"></span>
+    <button id="end-choose" type="button">Choose another texture</button>
+  </div>
+</div>
+
+<!-- Two audiences share this panel. A visitor needs to know it isn't their
+     fault and that reloading is worth a try; a developer who opened the file
+     over file:// needs the one-line fix. `.fault-dev` is revealed by the
+     bootstrap script below only when the cause is actually local. -->
+<div id="fault" role="alert">
+  <p class="fault-title">The surface didn't load.</p>
+  <p class="fault-note" id="fault-note">Something went wrong reaching the models for this piece. Reloading the page usually clears it.</p>
+  <p class="fault-note fault-dev">This page has to be served over http://. Opening the file directly blocks the models. Run <span style="white-space:nowrap">python3 -m http.server 8123</span> in the project folder and open localhost:8123.</p>
+</div>
+
+<div id="timeline" aria-hidden="true">
+  <div class="tl-line"></div>
+  <div id="tl-glow"></div>
+  <div id="tl-ticks"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- Bootstrap guard. js/scene.js builds the WebGLRenderer at module top level,
+     so on a device with no WebGL it throws before js/ui.js evaluates and
+     showFault() never gets the chance to run — the visitor just gets a black
+     screen. These handlers sit outside the module graph, so they survive that.
+     They also cover a blocked/failed CDN, which fails the same silent way. -->
+<script>
+(function () {
+  var fault = document.getElementById('fault');
+  var shown = false;
+  function fail(why) {
+    if (shown) return;
+    shown = true;
+    if (why) document.getElementById('fault-note').textContent = why;
+    // file:// is the one cause with a one-line fix, so show it only then
+    if (location.protocol === 'file:') {
+      var dev = fault.querySelector('.fault-dev');
+      if (dev) dev.style.display = 'block';
+    }
+    fault.style.display = 'flex';
+  }
+
+  // Feature-check up front: a precise message beats a generic one, and this
+  // fires before the module has spent a download budget it can't use.
+  try {
+    var probe = document.createElement('canvas');
+    if (!(window.WebGLRenderingContext &&
+          (probe.getContext('webgl2') || probe.getContext('webgl')))) {
+      fail('This piece is drawn with WebGL, which this browser has turned off or does not support. Try a current Chrome, Safari, Firefox or Edge with hardware acceleration on.');
+    }
+  } catch (e) {
+    fail('This piece is drawn with WebGL, which this browser has turned off or does not support.');
+  }
+
+  // Net for everything else that kills the module graph before ui.js runs: a
+  // blocked CDN import, a syntax error, a renderer that throws on construct.
+  // Deliberately a watchdog on a success flag rather than a global error
+  // handler — a listener broad enough to catch a module failure also catches
+  // every benign resource 404, and would throw this panel over a page that is
+  // working fine. ui.js sets __patinaBooted the moment it evaluates, well
+  // before any model has downloaded, so this window is generous.
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      if (!window.__patinaBooted) fail();
+    }, 8000);
+  });
+})();
+</script>
+
+<script type="module" src="js/ui.js"></script>
+
+<noscript>
+  <div class="fault-static">
+    <p class="fault-title">Patina needs JavaScript.</p>
+    <p class="fault-note">This is a real-time 3D experience — the surfaces are rendered in the browser, so there is no static version to fall back to.</p>
+  </div>
+</noscript>
+</body>
+</html>
