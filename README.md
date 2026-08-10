@@ -89,69 +89,6 @@ three.js or DOM dependency, `js/scene.js` owns the renderer, lighting and model
 preparation, and `js/ui.js` owns the state machine and input. Markup and CSS
 stay in `index.html`.
 
-## Engineering notes
-
-**Rotating a photogrammetry scan 360° breaks the lighting, but not for the
-reason it appears to.** When half an object went black I assumed the key light
-was in the wrong place. It was not. The camera is fixed, so the visible surface
-always has camera-facing normals no matter how the piece turns, and which
-normals are lit never actually changes. What changes is what rotates *into*
-view: the key's own self-shadowing, and the dark, untextured back faces most
-scans have. Measured over its own silhouette, the Ghiberti panel fell to a mean
-luminance of 1 out of 255, 99% of its pixels near-black, at 225°. So the fix was
-a second lit direction rather than a moved key: a cool counter-key from the
-upper left plus a warm rear light, neither casting shadow, since a second shadow
-map only fills in what the key already occludes and two contact shadows on the
-floor read as a bug. That panel now measures 80 at the same angle.
-
-**One flick of a trackpad is not one number.** A trackpad reports a flick as a
-burst of dozens of events whose total delta depends on how hard it was thrown,
-so metering the reader's progress in pixels let the *velocity* of a gesture
-decide whether they crossed one passage or three. Progress is now metered in
-gestures: a burst with no gap longer than 160ms is one gesture, and the momentum
-tail keeps that gesture alive so the whole coast stays inside it. A held scroll
-still has to advance, though, and time alone cannot separate "still pushing"
-from "coasting", because a hard flick's tail outlasts any cadence you pick.
-Magnitude can, since momentum decays by definition and a finger resting on the
-glass does not, so a repeat also requires the delta to still be at least 70% of
-that gesture's peak.
-
-**A scan that renders untextured, with no error at all.** three.js r160 dropped
-`KHR_materials_pbrSpecularGlossiness` and silently ignores the textures of any
-model using it. Nothing warns you; the mesh just arrives bare. It cost real time
-twice, on the Charioteer and again on Giambologna's *Fata Morgana*, so checking
-`extensionsUsed` is now the first thing done to any new scan.
-
-**Scans do not arrive the colour their material is.** The Cycladic torso's base
-colour map shipped dark amber, saturation 0.47 at hue 40°, which under a warm key
-read as bronze rather than stone, in a thread whose whole argument is that the
-stone is white. An albedo tint cannot fix that, because material colour only
-multiplies: it can darken but never desaturate. The map itself had to be
-desaturated and lifted, RGB (81, 68, 42) to (131, 130, 126), and re-embedded.
-
-**And one false lead worth recording.** Marble froze during testing, and those
-scans were carrying textures up to 8192², one of them 805 MB of VRAM by itself,
-so the cause looked obvious. Capping them at 2048 took the thread from about
-1,433 MB of VRAM to 225 MB and was worth doing, but it was not the bug. The
-freeze was Chrome throttling `requestAnimationFrame` to zero whenever its window
-is occluded, which affects all three threads equally and still does. It is also
-why tuning happens through a `?debug` hook that renders single frames
-synchronously, rather than by screenshotting and trusting the result.
-
-## Getting 352 MB of scans under a 100 MB deploy cap
-
-The sixteen scans came to 352 MB, against Vercel's 100 MB static upload limit on
-the Hobby plan. Everything shipped is now Draco-compressed with textures capped,
-at **89 MB total**, and a **first visit transfers 26.5 MB**, because only the
-opening thread plus the first object of the other two is fetched up front and
-the rest preloads in the background between frames, yielding to the render loop
-so a preload never stalls the opening camera move.
-
-Each pass was verified to leave triangle counts, texture counts and material
-names byte-identical. Material names matter because several scans have extras
-baked in, such as the krater's museum pedestal and label card, which are
-stripped at load time by material-name prefix.
-
 ## Credits and licence
 
 Every object is a real 3D scan published by its author under an open licence,
@@ -162,39 +99,3 @@ every screen links to them.
 
 [**CREDITS.md**](CREDITS.md) is the source of record; [credits.html](credits.html)
 is the page the site itself links to, generated from it.
-
-<details>
-<summary><b>Updating the demo video</b></summary>
-
-<br>
-
-GitHub only renders an inline video player for URLs it hosts itself, so the clip
-at the top of this file has to be uploaded through GitHub rather than linked out
-of the repo. The source file is committed at `demo/patina-demo.mp4`.
-
-1. Open any issue or PR comment box on this repo. It does not need to be
-   submitted, and can be discarded afterwards.
-2. Drag `demo/patina-demo.mp4` into it and wait for the upload to finish.
-   GitHub replaces it with a `https://github.com/user-attachments/assets/…` URL.
-3. Paste that URL on its own line at the top of this README, in place of the
-   HTML comment. A bare URL on its own line is all it takes; no markdown image
-   or video syntax.
-
-The original screen recording is 1080p and 146 MB, over GitHub's 100 MB
-per-file limit for video uploads. The committed copy is 720p at CRF 28 with the
-audio dropped, 2.8 MB:
-
-```bash
-ffmpeg -i patina_demo.mp4 -vf scale=1280:-2 -c:v libx264 -preset slow -crf 28 \
-  -pix_fmt yuv420p -movflags +faststart -an demo/patina-demo.mp4
-```
-
-The stills in this README are frames from the same recording, cropped to the
-browser viewport:
-
-```bash
-ffmpeg -ss 27 -i patina_demo.mp4 -frames:v 1 \
-  -vf "crop=1586:868:166:167,scale=1200:-2" -q:v 3 demo/bronze.jpg
-```
-
-</details>
