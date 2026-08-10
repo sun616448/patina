@@ -7,3 +7,6 @@ textures/
 CLAUDE.md
 .vercel
 .env*
+
+# Agent definitions, settings and local working notes.
+.claude/

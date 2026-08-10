@@ -7,9 +7,7 @@ JavaScript with three.js, no framework and no build step.
 
 **[▶ Open the live demo](https://patina-texture.vercel.app/)**
 
-<!-- DEMO VIDEO: replace this comment with the https://github.com/user-attachments/assets/…
-     URL that GitHub gives you when you drag demo/patina-demo.mp4 into an issue
-     comment box. See "Updating the demo video" at the bottom of this file. -->
+https://github.com/user-attachments/assets/de7786ec-5727-4c13-af9e-906c9d2fe398
 
 ![The opening screen: the title over a bronze surface at maximum closeness](demo/hero.jpg)
 
