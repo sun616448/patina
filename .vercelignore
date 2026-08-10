@@ -1,0 +1,15 @@
+# Nothing here is referenced at runtime (grep index.html js/ for "textures/").
+# 699 MB of source archive — it would blow the 100 MB Hobby upload cap on its
+# own. .gitignore already keeps it out of git-based deploys; this keeps it out
+# of `vercel deploy` uploads too, which read the working directory, not git.
+textures/
+
+# Working notes and agent config, not part of the site
+CLAUDE.md
+.claude/
+
+# README assets: the demo recording and its stills. Referenced by README.md
+# only, never by the site, so they have no reason to occupy the upload budget.
+demo/
+
+.DS_Store

@@ -4,3 +4,6 @@
 textures/
 
 .DS_Store
+CLAUDE.md
+.vercel
+.env*
